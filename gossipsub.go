@@ -202,6 +202,9 @@ type GossipSubParams struct {
 	// If the message is not received within this window, a broken promise is declared and
 	// the router may apply bahavioural penalties.
 	IWantFollowupTime time.Duration
+
+	// whether to turn on dandelion gossip or not
+	Dandelion bool
 }
 
 // NewGossipSub returns a new PubSub object using GossipSubRouter as the router.
@@ -263,6 +266,19 @@ func DefaultGossipSubParams() GossipSubParams {
 		MaxIHaveMessages:          GossipSubMaxIHaveMessages,
 		IWantFollowupTime:         GossipSubIWantFollowupTime,
 		SlowHeartbeatWarning:      0.1,
+		Dandelion:                 false,
+	}
+}
+
+func WithDandelion() Option {
+	return func(ps *PubSub) error {
+		gs, ok := ps.rt.(*GossipSubRouter)
+		if !ok {
+			return fmt.Errorf("pubsub router is not gossipsub")
+		}
+
+		gs.dandelion = true
+		return nil
 	}
 }
 
@@ -466,6 +482,8 @@ type GossipSubRouter struct {
 	// number of heartbeats since the beginning of time; this allows us to amortize some resource
 	// clean up -- eg backoff clean up.
 	heartbeatTicks uint64
+
+	dandelion bool
 }
 
 type connectInfo struct {
@@ -967,6 +985,43 @@ func (gs *GossipSubRouter) connector() {
 func (gs *GossipSubRouter) Publish(msg *Message) {
 	gs.mcache.Put(msg)
 
+	tosend := gs.selectPeersToPublish(msg)
+	from := msg.ReceivedFrom
+
+	out := rpcWithMessages(msg.Message)
+
+	// check stem length, if >0 then send to only NumStemPeers
+	if gs.dandelion && *msg.Message.Stem > 0 {
+		peers := selectRandomPeers(tosend, NumStemPeers)
+		for _, p := range peers {
+			gs.sendRPC(p, out)
+		}
+		return
+	}
+
+	for pid := range tosend {
+		if pid == from || pid == peer.ID(msg.GetFrom()) {
+			continue
+		}
+
+		gs.sendRPC(pid, out)
+	}
+}
+
+// todo: optimize this lol
+func selectRandomPeers(tosend map[peer.ID]struct{}, count int) []peer.ID {
+	sl := []peer.ID{}
+	for p := range tosend {
+		sl = append(sl, p)
+	}
+	for i := range sl {
+		j := rand.Intn(i + 1)
+		sl[i], sl[j] = sl[j], sl[i]
+	}
+	return sl[:count]
+}
+
+func (gs *GossipSubRouter) selectPeersToPublish(msg *Message) map[peer.ID]struct{} {
 	from := msg.ReceivedFrom
 	topic := msg.GetTopic()
 
@@ -975,7 +1030,7 @@ func (gs *GossipSubRouter) Publish(msg *Message) {
 	// any peers in the topic?
 	tmap, ok := gs.p.topics[topic]
 	if !ok {
-		return
+		return tosend // TODO: error???
 	}
 
 	if gs.floodPublish && from == gs.p.host.ID() {
@@ -1026,14 +1081,7 @@ func (gs *GossipSubRouter) Publish(msg *Message) {
 		}
 	}
 
-	out := rpcWithMessages(msg.Message)
-	for pid := range tosend {
-		if pid == from || pid == peer.ID(msg.GetFrom()) {
-			continue
-		}
-
-		gs.sendRPC(pid, out)
-	}
+	return tosend
 }
 
 func (gs *GossipSubRouter) Join(topic string) {

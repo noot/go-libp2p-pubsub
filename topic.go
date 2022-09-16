@@ -215,7 +215,7 @@ type ProvideKey func() (crypto.PrivKey, peer.ID)
 type PublishOptions struct {
 	ready     RouterReady
 	customKey ProvideKey
-	local bool
+	local     bool
 }
 
 type PubOpt func(pub *PublishOptions) error
