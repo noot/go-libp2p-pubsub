@@ -2,8 +2,10 @@ package pubsub
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -308,6 +310,12 @@ func (t *Topic) Publish(ctx context.Context, data []byte, opts ...PubOpt) error 
 		}
 	}
 
+	stemLenDiff, err := rand.Int(rand.Reader, big.NewInt(GossipSubStemMax-GossipSubStemMin))
+	if err != nil {
+		return err
+	}
+	stemLen := GossipSubStemMin + stemLenDiff.Uint64()
+	m.Stem = &stemLen
 	return t.p.val.PushLocal(&Message{m, "", t.p.host.ID(), nil, pub.local})
 }
 
