@@ -1,9 +1,9 @@
 package pubsub
 
 const (
-	GossipSubStemMin = 3
-	GossipSubStemMax = 6
-	NumStemPeers     = 2
-	StemReductionMin = 1
-	StemReductionMax = 2
+	GossipSubStemMin uint32 = 3
+	GossipSubStemMax uint32 = 6
+	NumStemPeers            = 2
+	StemReductionMin        = 1
+	StemReductionMax        = 2
 )
