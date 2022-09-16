@@ -991,7 +991,11 @@ func (gs *GossipSubRouter) Publish(msg *Message) {
 	out := rpcWithMessages(msg.Message)
 
 	// check stem length, if >0 then send to only NumStemPeers
-	if gs.dandelion && *msg.Message.Stem > 0 {
+	if gs.dandelion && msg.Message.Stem != nil && *msg.Message.Stem > 0 {
+		// decrement stem length
+		stem := *msg.Message.Stem
+		stem -= 1
+		msg.Message.Stem = &stem
 		peers := selectRandomPeers(tosend, NumStemPeers)
 		for _, p := range peers {
 			gs.sendRPC(p, out)
