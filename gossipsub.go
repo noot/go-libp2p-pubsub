@@ -1019,8 +1019,14 @@ func selectRandomPeers(tosend map[peer.ID]struct{}, count int) []peer.ID {
 		sl = append(sl, p)
 	}
 	for i := range sl {
+		if i == len(sl)-1 {
+			break
+		}
 		j := rand.Intn(i + 1)
 		sl[i], sl[j] = sl[j], sl[i]
+	}
+	if len(sl) < count {
+		return sl
 	}
 	return sl[:count]
 }
